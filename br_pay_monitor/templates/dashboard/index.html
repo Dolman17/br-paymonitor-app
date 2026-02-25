@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Dashboard</h1>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card text-bg-light h-100">
+      <div class="card-body">
+        <h6 class="card-title text-uppercase text-muted small">Active jobs</h6>
+        <h3 class="card-text mb-0">{{ active_jobs_count }}</h3>
+        <small class="text-muted">Currently open adverts in monitored areas</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card text-bg-light h-100">
+      <div class="card-body">
+        <h6 class="card-title text-uppercase text-muted small">Companies</h6>
+        <h3 class="card-text mb-0">{{ company_count }}</h3>
+        <small class="text-muted">Distinct advertisers (incl. agencies)</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card text-bg-light h-100">
+      <div class="card-body">
+        <h6 class="card-title text-uppercase text-muted small">Monitored roles</h6>
+        <h3 class="card-text mb-0">{{ roles_count }}</h3>
+        <small class="text-muted">Configured for {{ brand.name }}</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card text-bg-light h-100">
+      <div class="card-body">
+        <h6 class="card-title text-uppercase text-muted small">Monitored postcodes</h6>
+        <h3 class="card-text mb-0">{{ postcodes_count }}</h3>
+        <small class="text-muted">Care home catchment areas</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Scrape status</h5>
+
+        {% if last_scrape %}
+          <p class="mb-1">
+            <strong>Last scrape run:</strong>
+            {{ last_scrape.started_at.strftime("%Y-%m-%d %H:%M UTC") }}
+          </p>
+          <p class="mb-1">
+            <strong>Jobs fetched:</strong> {{ last_scrape.jobs_fetched }}
+          </p>
+          <p class="mb-1">
+            <strong>API calls (approx):</strong> {{ last_scrape.api_calls }}
+          </p>
+          <p class="mb-0">
+            <strong>Status:</strong>
+            {% if last_scrape.success %}
+              <span class="badge bg-success">Success</span>
+            {% else %}
+              <span class="badge bg-danger">Failed</span>
+            {% endif %}
+          </p>
+        {% else %}
+          <p class="mb-0 text-muted">No scrape runs recorded yet. Once Adzuna is configured and a scrape has run, details will appear here.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title mb-3">7-day activity</h5>
+
+        {% if trend_data %}
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th class="text-end">Job snapshots</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in trend_data %}
+              <tr>
+                <td>{{ row.day.strftime("%Y-%m-%d") }}</td>
+                <td class="text-end">{{ row.count }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <small class="text-muted d-block mt-2">
+            Counts reflect how many job snapshot records were seen per day
+            across all monitored postcodes and roles.
+          </small>
+        {% else %}
+          <p class="mb-0 text-muted">No activity yet. Once scrapes start running, trends will appear here.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Latest jobs seen</h5>
+
+    {% if latest_snapshots %}
+      <div class="table-responsive">
+        <table class="table table-striped table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Seen at</th>
+              <th>Company</th>
+              <th>Role</th>
+              <th>Location</th>
+              <th class="text-end">Pay (hourly)</th>
+              <th>Type</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for snap in latest_snapshots %}
+            {% set job = snap.job_ad %}
+            <tr>
+              <td>{{ snap.seen_at.strftime("%Y-%m-%d %H:%M") }}</td>
+              <td>
+                {% if job.company %}
+                  {{ job.company.canonical_name }}
+                {% else %}
+                  <span class="text-muted">Unknown</span>
+                {% endif %}
+              </td>
+              <td>{{ job.title_raw }}</td>
+              <td>
+                {% if job.city %}
+                  {{ job.city }}
+                  {% if job.county %}
+                    ({{ job.county }})
+                  {% endif %}
+                {% elif job.location_raw %}
+                  {{ job.location_raw }}
+                {% else %}
+                  <span class="text-muted">N/A</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if snap.salary_min_hourly is not none or snap.salary_max_hourly is not none %}
+                  {% if snap.salary_min_hourly is not none and snap.salary_max_hourly is not none %}
+                    £{{ "%.2f"|format(snap.salary_min_hourly) }} – £{{ "%.2f"|format(snap.salary_max_hourly) }}
+                  {% elif snap.salary_min_hourly is not none %}
+                    from £{{ "%.2f"|format(snap.salary_min_hourly) }}
+                  {% elif snap.salary_max_hourly is not none %}
+                    up to £{{ "%.2f"|format(snap.salary_max_hourly) }}
+                  {% endif %}
+                  <span class="text-muted small">
+                    ({{ snap.salary_source or "unknown" }})
+                  </span>
+                {% else %}
+                  <span class="text-muted">N/A</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if job.is_blue_ribbon %}
+                  <span class="badge bg-primary">Blue Ribbon</span>
+                {% else %}
+                  <span class="badge bg-secondary">Competitor</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <small class="text-muted d-block mt-2">
+        Latest 10 job snapshots across all monitored areas and roles.
+      </small>
+    {% else %}
+      <p class="mb-0 text-muted">No jobs have been scraped yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Monitored Postcodes</h1>
+
+<div class="row">
+  <div class="col-md-5">
+    <h4>Add postcode</h4>
+    <form method="post" class="mb-4">
+      {{ form.hidden_tag() }}
+
+      <div class="mb-3">
+        {{ form.postcode.label(class="form-label") }}
+        {{ form.postcode(class="form-control", placeholder="e.g. WS13 6QF") }}
+        {% for error in form.postcode.errors %}
+          <div class="text-danger small">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="mb-3">
+        {{ form.radius_miles.label(class="form-label") }}
+        {{ form.radius_miles(class="form-control") }}
+        {% for error in form.radius_miles.errors %}
+          <div class="text-danger small">{{ error }}</div>
+        {% endfor %}
+        <div class="form-text">Distance around the postcode to monitor (miles).</div>
+      </div>
+
+      <div class="mb-3">
+        {{ form.display_name.label(class="form-label") }}
+        {{ form.display_name(class="form-control", placeholder="Optional label") }}
+      </div>
+
+      {{ form.submit(class="btn btn-primary") }}
+    </form>
+  </div>
+
+  <div class="col-md-7">
+    <h4>Current monitored postcodes</h4>
+
+    {% if postcodes %}
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th>Postcode</th>
+            <th>Label</th>
+            <th>Radius (mi)</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pc in postcodes %}
+          <tr>
+            <td>{{ pc.postcode }}</td>
+            <td>{{ pc.display_name or '' }}</td>
+            <td>{{ "%.1f"|format(pc.radius_miles) }}</td>
+            <td>
+              {% if pc.is_active %}
+                <span class="badge bg-success">Active</span>
+              {% else %}
+                <span class="badge bg-secondary">Inactive</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <form method="post"
+                    action="{{ url_for('admin.toggle_postcode', pc_id=pc.id) }}"
+                    class="d-inline">
+                <button type="submit"
+                        class="btn btn-sm {% if pc.is_active %}btn-outline-secondary{% else %}btn-outline-success{% endif %}">
+                  {% if pc.is_active %}Deactivate{% else %}Activate{% endif %}
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No postcodes configured yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
