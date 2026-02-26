@@ -18,16 +18,16 @@ depends_on = None
 
 
 def upgrade():
-    # We’re converting email_recipients from per-brand rows
-    # to per-email rows with per-brand flags.
+    # Convert email_recipients from per-brand rows to per-email rows
+    # with per-brand flags.
     with op.batch_alter_table("email_recipients", schema=None) as batch_op:
-        # New columns
+        # New columns with proper Postgres-friendly boolean defaults
         batch_op.add_column(
             sa.Column(
                 "include_blue_ribbon",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("1"),
+                server_default=sa.text("true"),
             )
         )
         batch_op.add_column(
@@ -35,7 +35,7 @@ def upgrade():
                 "include_forevermore",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
             )
         )
         batch_op.add_column(
@@ -47,8 +47,7 @@ def upgrade():
             )
         )
 
-        # Drop old brand_id – the FK constraint will be handled implicitly
-        # by batch_alter_table’s table recreation; no explicit drop_constraint.
+        # Drop old brand_id – FK is handled implicitly by batch_alter_table
         batch_op.drop_column("brand_id")
 
         # Add index on email for uniqueness/lookups
@@ -58,7 +57,7 @@ def upgrade():
             unique=True,
         )
 
-    # Optional: clear server_default if you’re fussy.
+    # Optional: clear server_default so future migrations stay clean
     with op.batch_alter_table("email_recipients", schema=None) as batch_op:
         batch_op.alter_column(
             "include_blue_ribbon",
@@ -75,12 +74,12 @@ def upgrade():
 
 
 def downgrade():
-    # Downgrade is best-effort; you probably won’t use it on this project.
+    # Best-effort downgrade; you’re unlikely to use this in practice.
     with op.batch_alter_table("email_recipients", schema=None) as batch_op:
         # Drop the email index
         batch_op.drop_index("ix_email_recipients_email")
 
-        # Recreate brand_id column (nullable to avoid failing on existing data)
+        # Recreate brand_id (nullable) and FK back to brands.id
         batch_op.add_column(
             sa.Column("brand_id", sa.Integer(), nullable=True)
         )
