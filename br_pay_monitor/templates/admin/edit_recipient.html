@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-3">Admin</h1>
+
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.postcodes') }}">Monitored postcodes</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.roles') }}">Monitored roles</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('admin.recipients') }}">Email recipients</a>
+  </li>
+</ul>
+
+<div class="row">
+  <div class="col-md-6">
+    <h4>Edit recipient</h4>
+    <form method="post">
+      {{ form.hidden_tag() }}
+
+      <div class="mb-3">
+        {{ form.email.label(class="form-label") }}
+        {{ form.email(class="form-control") }}
+        {% for error in form.email.errors %}
+          <div class="text-danger small">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="form-check mb-2">
+        {{ form.is_active(class="form-check-input") }}
+        {{ form.is_active.label(class="form-check-label") }}
+      </div>
+
+      <div class="border rounded p-2 mb-3">
+        <div class="small mb-1 text-muted">Include in reports for:</div>
+        <div class="form-check">
+          {{ form.include_blue_ribbon(class="form-check-input") }}
+          {{ form.include_blue_ribbon.label(class="form-check-label") }}
+        </div>
+        <div class="form-check">
+          {{ form.include_forevermore(class="form-check-input") }}
+          {{ form.include_forevermore.label(class="form-check-label") }}
+        </div>
+      </div>
+
+      {{ form.submit(class="btn btn-primary") }}
+      <a href="{{ url_for('admin.recipients') }}" class="btn btn-secondary ms-2">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

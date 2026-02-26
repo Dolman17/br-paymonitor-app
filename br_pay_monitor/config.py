@@ -7,12 +7,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Config:
+    # General Flask
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-change-me")
+
+    # Database: prefer DATABASE_URL (Railway/Postgres), fallback to local SQLite
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "DATABASE_URL",
         "sqlite:///" + str(BASE_DIR / "dev.db"),
     )
-    # Railway / Postgres compatibility
+
+    # Railway / Postgres compatibility: SQLAlchemy prefers postgresql://
     if SQLALCHEMY_DATABASE_URI.startswith("postgres://"):
         SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace(
             "postgres://", "postgresql://", 1
@@ -24,7 +28,7 @@ class Config:
     ADZUNA_APP_ID = os.environ.get("ADZUNA_APP_ID", "")
     ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "")
     ADZUNA_COUNTRY = os.environ.get("ADZUNA_COUNTRY", "gb")
-    ADZUNA_DAILY_LIMIT = int(os.environ.get("ADZUNA_DAILY_LIMIT", "900"))  # example
+    ADZUNA_DAILY_LIMIT = int(os.environ.get("ADZUNA_DAILY_LIMIT", "900"))  # example cap
     ADZUNA_SAFETY_BUFFER = int(os.environ.get("ADZUNA_SAFETY_BUFFER", "50"))
 
     # Pay normalisation
@@ -55,7 +59,11 @@ class ProductionConfig(Config):
 
 
 config_by_name = {
+    # explicit
     "dev": DevelopmentConfig,
     "prod": ProductionConfig,
     "default": DevelopmentConfig,
+    # common aliases so FLASK_ENV can be more human
+    "development": DevelopmentConfig,
+    "production": ProductionConfig,
 }

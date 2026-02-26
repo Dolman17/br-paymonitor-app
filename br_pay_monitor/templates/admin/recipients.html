@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-3">Admin</h1>
+
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.postcodes') }}">Monitored postcodes</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.roles') }}">Monitored roles</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('admin.recipients') }}">Email recipients</a>
+  </li>
+</ul>
+
+<div class="row">
+  <div class="col-md-5">
+    <h4>Add new recipient</h4>
+    <form method="post" class="mb-4">
+      {{ form.hidden_tag() }}
+
+      <div class="mb-3">
+        {{ form.email.label(class="form-label") }}
+        {{ form.email(class="form-control", placeholder="someone@example.com") }}
+        {% for error in form.email.errors %}
+          <div class="text-danger small">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="form-check mb-2">
+        {{ form.is_active(class="form-check-input") }}
+        {{ form.is_active.label(class="form-check-label") }}
+      </div>
+
+      <div class="border rounded p-2 mb-3">
+        <div class="small mb-1 text-muted">Include in reports for:</div>
+        <div class="form-check">
+          {{ form.include_blue_ribbon(class="form-check-input") }}
+          {{ form.include_blue_ribbon.label(class="form-check-label") }}
+        </div>
+        <div class="form-check">
+          {{ form.include_forevermore(class="form-check-input") }}
+          {{ form.include_forevermore.label(class="form-check-label") }}
+        </div>
+      </div>
+
+      {{ form.submit(class="btn btn-primary") }}
+    </form>
+  </div>
+
+  <div class="col-md-7">
+    <h4>Current recipients</h4>
+
+    {% if recipients %}
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Brands</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in recipients %}
+          <tr>
+            <td>{{ r.email }}</td>
+            <td>
+              {% if r.is_active %}
+                <span class="badge bg-success">Active</span>
+              {% else %}
+                <span class="badge bg-secondary">Inactive</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.include_blue_ribbon %}
+                <span class="badge bg-primary">Blue Ribbon</span>
+              {% endif %}
+              {% if r.include_forevermore %}
+                <span class="badge bg-info text-dark">Forevermore Care</span>
+              {% endif %}
+              {% if not r.include_blue_ribbon and not r.include_forevermore %}
+                <span class="text-muted small">None</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <a href="{{ url_for('admin.edit_recipient', recipient_id=r.id) }}"
+                 class="btn btn-sm btn-outline-primary">
+                Edit
+              </a>
+              <form method="post"
+                    action="{{ url_for('admin.delete_recipient', recipient_id=r.id) }}"
+                    class="d-inline"
+                    onsubmit="return confirm('Delete this recipient?');">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                  Delete
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No recipients configured yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

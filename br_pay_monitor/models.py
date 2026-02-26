@@ -225,13 +225,19 @@ class EmailRecipient(db.Model):
     __tablename__ = "email_recipients"
 
     id = db.Column(db.Integer, primary_key=True)
-    brand_id = db.Column(db.Integer, db.ForeignKey("brands.id"), nullable=False)
-    brand = db.relationship(
-        "Brand", backref=db.backref("email_recipients", lazy="dynamic")
-    )
 
-    email = db.Column(db.String(255), nullable=False)
+    # One row per email, with per-brand flags
+    email = db.Column(db.String(255), unique=True, index=True, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Brand subscriptions
+    include_blue_ribbon = db.Column(db.Boolean, default=True, nullable=False)
+    include_forevermore = db.Column(db.Boolean, default=False, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<EmailRecipient {self.email}>"
 
 
 class EmailLog(db.Model):

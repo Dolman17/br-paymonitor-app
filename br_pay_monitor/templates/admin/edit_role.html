@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-3">Admin</h1>
+
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.postcodes') }}">Monitored postcodes</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('admin.roles') }}">Monitored roles</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.recipients') }}">Email recipients</a>
+  </li>
+</ul>
+
+<div class="row">
+  <div class="col-md-6">
+    <h4>Edit role</h4>
+    <form method="post">
+      {{ form.hidden_tag() }}
+
+      <div class="mb-3">
+        {{ form.name.label(class="form-label") }}
+        {{ form.name(class="form-control") }}
+        {% for error in form.name.errors %}
+          <div class="text-danger small">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="mb-3">
+        {{ form.search_terms.label(class="form-label") }}
+        {{ form.search_terms(class="form-control") }}
+      </div>
+
+      <div class="mb-3">
+        {{ form.postcode_id.label(class="form-label") }}
+        {{ form.postcode_id(class="form-select") }}
+        {% for error in form.postcode_id.errors %}
+          <div class="text-danger small">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      {{ form.submit(class="btn btn-primary") }}
+      <a href="{{ url_for('admin.roles') }}" class="btn btn-secondary ms-2">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

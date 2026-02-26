@@ -1,0 +1,568 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>BR Pay Monitor – Daily Report</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: #f3f4f6;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 14px;
+        color: #111827;
+      }
+      .wrapper {
+        width: 100%;
+        background: #f3f4f6;
+        padding: 16px 8px 32px;
+      }
+      .container {
+        max-width: 960px;
+        margin: 0 auto;
+        background: #ffffff;
+        border-radius: 6px;
+        border: 1px solid #e5e7eb;
+        padding: 20px 24px 28px;
+      }
+      h1, h2, h3 {
+        margin: 0 0 8px;
+        font-weight: 600;
+        color: #111827;
+      }
+      h1 {
+        font-size: 20px;
+      }
+      h2 {
+        font-size: 16px;
+        border-bottom: 1px solid #e5e7eb;
+        padding-bottom: 4px;
+        margin-bottom: 10px;
+      }
+      h3 {
+        font-size: 14px;
+        margin-top: 12px;
+      }
+      p {
+        margin: 0 0 8px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 12px;
+      }
+      th, td {
+        border: 1px solid #e5e7eb;
+        padding: 4px 6px;
+        vertical-align: top;
+      }
+      th {
+        background: #f9fafb;
+        text-align: left;
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .small {
+        font-size: 12px;
+        color: #6b7280;
+      }
+      .section {
+        margin-bottom: 24px;
+      }
+      .tag {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 999px;
+        font-size: 11px;
+        margin-left: 4px;
+      }
+      .tag-br {
+        background: #2563eb;
+        color: #ffffff;
+      }
+      .tag-competitor {
+        background: #4b5563;
+        color: #ffffff;
+      }
+      .tag-agency {
+        background: #facc15;
+        color: #111827;
+      }
+      .up {
+        color: #15803d;
+        font-weight: 600;
+      }
+      .down {
+        color: #b91c1c;
+        font-weight: 600;
+      }
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        border: 1px solid #bfdbfe;
+      }
+      .muted {
+        color: #9ca3af;
+      }
+      .divider {
+        border-top: 1px solid #e5e7eb;
+        margin: 16px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="container">
+        <h1>BR Pay Monitor – Daily Rate Report</h1>
+        <p class="small">
+          Brand: <strong>{{ brand.name }}</strong><br>
+          Date: <strong>{{ target_date.strftime("%Y-%m-%d") }}</strong><br>
+          Material change threshold (competitors): 
+          {% if material_delta and material_delta > 0 %}
+            <strong>≥ £{{ "%.2f"|format(material_delta) }}/hr</strong>
+          {% else %}
+            <strong>any non-zero change</strong>
+          {% endif %}
+        </p>
+
+        <div class="section">
+          <h2>Summary</h2>
+          <table>
+            <tbody>
+              <tr>
+                <th style="width: 35%;">Active jobs</th>
+                <td>{{ summary.active_jobs_count }}</td>
+              </tr>
+              <tr>
+                <th>Companies advertising</th>
+                <td>{{ summary.company_count }}</td>
+              </tr>
+              <tr>
+                <th>Monitored roles</th>
+                <td>{{ summary.roles_count }}</td>
+              </tr>
+              <tr>
+                <th>Monitored postcodes</th>
+                <td>{{ summary.postcodes_count }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="section">
+          <h2>BR adverts undercut today</h2>
+          {% if br_undercut_ads %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Location</th>
+                  <th>BR pay (hourly)</th>
+                  <th>Best competitor</th>
+                  <th>Competitor pay</th>
+                  <th>Gap vs BR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in br_undercut_ads %}
+                <tr>
+                  <td>{{ row.role_label }}</td>
+                  <td>{{ row.location_label }}</td>
+                  <td>
+                    {% if row.br_min is not none and row.br_max is not none %}
+                      £{{ "%.2f"|format(row.br_min) }} – £{{ "%.2f"|format(row.br_max) }}
+                    {% elif row.br_min is not none %}
+                      from £{{ "%.2f"|format(row.br_min) }}
+                    {% elif row.br_max is not none %}
+                      up to £{{ "%.2f"|format(row.br_max) }}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {{ row.best_comp_company }}
+                    <span class="tag tag-competitor">Competitor</span>
+                    {% if row.comp_is_agency %}
+                      <span class="tag tag-agency">Agency</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.best_comp_max is not none %}
+                      £{{ "%.2f"|format(row.best_comp_max) }}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.diff is not none %}
+                      <span class="up">+£{{ "%.2f"|format(row.diff) }}</span>
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="small">No Blue Ribbon adverts were materially undercut today.</p>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <h2>Competitors above BR 7-day baseline (by role)</h2>
+          {% if competitors_above_baseline %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Role</th>
+                  <th>Location</th>
+                  <th>Pay (hourly)</th>
+                  <th>BR 7-day baseline</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in competitors_above_baseline %}
+                <tr>
+                  <td>
+                    {{ row.company_name }}
+                    <span class="tag tag-competitor">Competitor</span>
+                    {% if row.is_agency %}
+                      <span class="tag tag-agency">Agency</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ row.role_label }}</td>
+                  <td>{{ row.location_label }}</td>
+                  <td>
+                    {% if row.min_hourly is not none and row.max_hourly is not none %}
+                      £{{ "%.2f"|format(row.min_hourly) }} – £{{ "%.2f"|format(row.max_hourly) }}
+                    {% elif row.min_hourly is not none %}
+                      from £{{ "%.2f"|format(row.min_hourly) }}
+                    {% elif row.max_hourly is not none %}
+                      up to £{{ "%.2f"|format(row.max_hourly) }}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.baseline_min is not none or row.baseline_max is not none %}
+                      {% if row.baseline_min is not none and row.baseline_max is not none %}
+                        £{{ "%.2f"|format(row.baseline_min) }} – £{{ "%.2f"|format(row.baseline_max) }}
+                      {% elif row.baseline_min is not none %}
+                        from £{{ "%.2f"|format(row.baseline_min) }}
+                      {% elif row.baseline_max is not none %}
+                        up to £{{ "%.2f"|format(row.baseline_max) }}
+                      {% endif %}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="small">No competitor adverts materially above BR baseline today.</p>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <h2>New local threats (new companies above BR baseline)</h2>
+          {% if new_local_threats %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Role</th>
+                  <th>Location</th>
+                  <th>Pay (hourly)</th>
+                  <th>BR 7-day baseline</th>
+                  <th>First seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in new_local_threats %}
+                <tr>
+                  <td>
+                    {{ row.company_name }}
+                    <span class="tag tag-competitor">Competitor</span>
+                    {% if row.is_agency %}
+                      <span class="tag tag-agency">Agency</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ row.role_label }}</td>
+                  <td>{{ row.location_label }}</td>
+                  <td>
+                    {% if row.min_hourly is not none and row.max_hourly is not none %}
+                      £{{ "%.2f"|format(row.min_hourly) }} – £{{ "%.2f"|format(row.max_hourly) }}
+                    {% elif row.min_hourly is not none %}
+                      from £{{ "%.2f"|format(row.min_hourly) }}
+                    {% elif row.max_hourly is not none %}
+                      up to £{{ "%.2f"|format(row.max_hourly) }}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.baseline_min is not none or row.baseline_max is not none %}
+                      {% if row.baseline_min is not none and row.baseline_max is not none %}
+                        £{{ "%.2f"|format(row.baseline_min) }} – £{{ "%.2f"|format(row.baseline_max) }}
+                      {% elif row.baseline_min is not none %}
+                        from £{{ "%.2f"|format(row.baseline_min) }}
+                      {% elif row.baseline_max is not none %}
+                        up to £{{ "%.2f"|format(row.baseline_max) }}
+                      {% endif %}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ row.first_seen_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="small">No new high-paying companies appeared today.</p>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <h2>Material rate changes today</h2>
+          <p class="small">
+            Shows all Blue Ribbon rate changes, and competitor changes where the hourly rate moved by
+            {% if material_delta and material_delta > 0 %}
+              at least £{{ "%.2f"|format(material_delta) }}/hr.
+            {% else %}
+              any non-zero amount.
+            {% endif %}
+          </p>
+          {% if rate_changes %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Role</th>
+                  <th>Location</th>
+                  <th>Previous</th>
+                  <th>Current</th>
+                  <th>Δ (min/max)</th>
+                  <th>Last seen</th>
+                  <th>7-day avg</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in rate_changes %}
+                <tr>
+                  <td>
+                    {{ row.company_name }}
+                    {% if row.is_blue_ribbon %}
+                      <span class="tag tag-br">Blue Ribbon</span>
+                    {% else %}
+                      <span class="tag tag-competitor">Competitor</span>
+                    {% endif %}
+                    {% if row.is_agency %}
+                      <span class="tag tag-agency">Agency</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ row.role_label }}</td>
+                  <td>{{ row.location_label }}</td>
+                  <td>
+                    {% if row.prev_min is not none or row.prev_max is not none %}
+                      {% if row.prev_min is not none and row.prev_max is not none %}
+                        £{{ "%.2f"|format(row.prev_min) }} – £{{ "%.2f"|format(row.prev_max) }}
+                      {% elif row.prev_min is not none %}
+                        from £{{ "%.2f"|format(row.prev_min) }}
+                      {% elif row.prev_max is not none %}
+                        up to £{{ "%.2f"|format(row.prev_max) }}
+                      {% endif %}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.curr_min is not none or row.curr_max is not none %}
+                      {% if row.curr_min is not none and row.curr_max is not none %}
+                        £{{ "%.2f"|format(row.curr_min) }} – £{{ "%.2f"|format(row.curr_max) }}
+                      {% elif row.curr_min is not none %}
+                        from £{{ "%.2f"|format(row.curr_min) }}
+                      {% elif row.curr_max is not none %}
+                        up to £{{ "%.2f"|format(row.curr_max) }}
+                      {% endif %}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.delta_min is not none or row.delta_max is not none %}
+                      {% if row.delta_min is not none %}
+                        {% if row.delta_min > 0 %}
+                          <span class="up">+£{{ "%.2f"|format(row.delta_min) }}</span>
+                        {% elif row.delta_min < 0 %}
+                          <span class="down">£{{ "%.2f"|format(row.delta_min) }}</span>
+                        {% endif %}
+                      {% endif %}
+                      {% if row.delta_max is not none %}
+                        {% if row.delta_max > 0 %}
+                          <span class="up"> / +£{{ "%.2f"|format(row.delta_max) }}</span>
+                        {% elif row.delta_max < 0 %}
+                          <span class="down"> / £{{ "%.2f"|format(row.delta_max) }}</span>
+                        {% endif %}
+                      {% endif %}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.prev_seen_at %}
+                      {{ row.prev_seen_at.strftime("%Y-%m-%d %H:%M") }}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.baseline_min is not none or row.baseline_max is not none %}
+                      {% if row.baseline_min is not none and row.baseline_max is not none %}
+                        £{{ "%.2f"|format(row.baseline_min) }} – £{{ "%.2f"|format(row.baseline_max) }}
+                      {% elif row.baseline_min is not none %}
+                        from £{{ "%.2f"|format(row.baseline_min) }}
+                      {% elif row.baseline_max is not none %}
+                        up to £{{ "%.2f"|format(row.baseline_max) }}
+                      {% endif %}
+                    {% else %}
+                      <span class="muted">N/A</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="small">No material rate changes today.</p>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <h2>New roles today</h2>
+          {% if new_roles %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>First seen</th>
+                  <th>Companies advertising</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in new_roles %}
+                <tr>
+                  <td>{{ row.title }}</td>
+                  <td>{{ row.first_seen_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                  <td>{{ row.company_count }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="small">No brand new roles first seen today.</p>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <h2>New companies today</h2>
+          {% if new_companies %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>First seen</th>
+                  <th>Job adverts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in new_companies %}
+                <tr>
+                  <td>{{ row.company_name }}</td>
+                  <td>{{ row.first_seen_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                  <td>{{ row.role_count }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="small">No brand new companies first seen today.</p>
+          {% endif %}
+        </div>
+
+        <div class="section">
+          <h2>Top paying adverts today (by role)</h2>
+          {% if top_by_role %}
+            {% for role_label, rows in top_by_role.items() %}
+              <h3>{{ role_label }}</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Company</th>
+                    <th>Location</th>
+                    <th>Pay (hourly)</th>
+                    <th>Type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in rows %}
+                  <tr>
+                    <td>
+                      {{ row.company_name }}
+                      {% if row.is_blue_ribbon %}
+                        <span class="tag tag-br">Blue Ribbon</span>
+                      {% else %}
+                        <span class="tag tag-competitor">Competitor</span>
+                      {% endif %}
+                      {% if row.is_agency %}
+                        <span class="tag tag-agency">Agency</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ row.location_label }}</td>
+                    <td>
+                      {% if row.min_hourly is not none and row.max_hourly is not none %}
+                        £{{ "%.2f"|format(row.min_hourly) }} – £{{ "%.2f"|format(row.max_hourly) }}
+                      {% elif row.min_hourly is not none %}
+                        from £{{ "%.2f"|format(row.min_hourly) }}
+                      {% elif row.max_hourly is not none %}
+                        up to £{{ "%.2f"|format(row.max_hourly) }}
+                      {% else %}
+                        <span class="muted">N/A</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if row.is_blue_ribbon %}
+                        BR
+                      {% else %}
+                        Competitor
+                      {% endif %}
+                      {% if row.is_agency %}
+                        / Agency
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% endfor %}
+          {% else %}
+            <p class="small">No pay data available for today.</p>
+          {% endif %}
+        </div>
+
+        <div class="divider"></div>
+        <p class="small">
+          Generated automatically by BR Pay Monitor.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

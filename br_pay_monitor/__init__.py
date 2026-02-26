@@ -65,6 +65,7 @@ def register_cli_commands(app: Flask) -> None:
         Brand,
         MonitoredPostcode,
         MonitoredRole,
+        EmailRecipient,
         db as _db,
     )
 
@@ -149,7 +150,6 @@ def register_cli_commands(app: Flask) -> None:
     @app.cli.group("scrape")
     def scrape_group():
         """Scraping related commands."""
-        # This group just names the subcommands.
         pass
 
     @scrape_group.command("adzuna-once")
@@ -176,3 +176,90 @@ def register_cli_commands(app: Flask) -> None:
             f"Scrape {run_obj.id} complete: {total} jobs fetched, "
             f"{run_obj.api_calls} API calls (success={run_obj.success})."
         )
+
+    # -------- Report commands group -------- #
+
+    @app.cli.group("report")
+    def report_group():
+        """Reporting and email commands."""
+        pass
+
+    @report_group.command("send-daily")
+    @click.option("--brand", "brand_slug", default="blue-ribbon", help="Brand slug")
+    @click.option(
+        "--date",
+        "date_str",
+        default=None,
+        help="Target date (YYYY-MM-DD). Defaults to today (UTC).",
+    )
+    def send_daily_report(brand_slug: str, date_str: Optional[str]):
+        """
+        Build and send the daily email report for the given brand.
+
+        Example:
+            flask report send-daily --brand=blue-ribbon
+            flask report send-daily --brand=blue-ribbon --date=2026-02-25
+        """
+        from datetime import datetime as _dt
+
+        from .services.reporting import build_daily_report
+        from .services.emailer import send_html_email
+
+        brand = Brand.query.filter_by(slug=brand_slug).first()
+        if not brand:
+            click.echo(f"Brand with slug '{brand_slug}' not found.")
+            return
+
+        if date_str:
+            try:
+                target_date = _dt.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                click.echo("Invalid date format. Use YYYY-MM-DD.")
+                return
+        else:
+            target_date = _dt.utcnow().date()
+
+        # Brand-specific recipient selection using per-brand flags
+        if brand.slug == "blue-ribbon":
+            recipients = (
+                EmailRecipient.query.filter_by(
+                    is_active=True,
+                    include_blue_ribbon=True,
+                )
+                .order_by(EmailRecipient.email.asc())
+                .all()
+            )
+        elif brand.slug == "forevermore-care":
+            recipients = (
+                EmailRecipient.query.filter_by(
+                    is_active=True,
+                    include_forevermore=True,
+                )
+                .order_by(EmailRecipient.email.asc())
+                .all()
+            )
+        else:
+            # No one subscribed for unknown brands yet
+            recipients = []
+
+        if not recipients:
+            click.echo(
+                f"No active email recipients configured for brand '{brand_slug}'. "
+                "Skipping send."
+            )
+            return
+
+        to_emails = [r.email for r in recipients]
+        click.echo(
+            f"Building daily report for {brand.slug} on {target_date.isoformat()} "
+            f"to {len(to_emails)} recipients..."
+        )
+        subject, html = build_daily_report(brand_slug=brand_slug, target_date=target_date)
+        success, log = send_html_email(subject, to_emails, html, brand=brand)
+
+        if success:
+            click.echo(
+                f"Daily report sent successfully. Log id={log.id if log else 'N/A'}."
+            )
+        else:
+            click.echo("Failed to send daily report. See logs for details.")

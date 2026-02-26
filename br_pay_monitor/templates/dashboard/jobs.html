@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Jobs</h1>
+
+<form method="get" class="row g-3 mb-4">
+  <div class="col-md-3">
+    <label for="postcode_id" class="form-label">Postcode</label>
+    <select name="postcode_id" id="postcode_id" class="form-select">
+      <option value="">All</option>
+      {% for pc in postcodes %}
+        <option value="{{ pc.id }}"
+          {% if filters.postcode_id == pc.id %}selected{% endif %}>
+          {{ pc.display_name or pc.postcode }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-3">
+    <label for="role_id" class="form-label">Role</label>
+    <select name="role_id" id="role_id" class="form-select">
+      <option value="">All</option>
+      {% for r in roles %}
+        <option value="{{ r.id }}"
+          {% if filters.role_id == r.id %}selected{% endif %}>
+          {{ r.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-2">
+    <label for="adv_type" class="form-label">Advertiser</label>
+    <select name="adv_type" id="adv_type" class="form-select">
+      <option value="all" {% if filters.adv_type == 'all' %}selected{% endif %}>BR + competitors</option>
+      <option value="br" {% if filters.adv_type == 'br' %}selected{% endif %}>Blue Ribbon only</option>
+      <option value="competitor" {% if filters.adv_type == 'competitor' %}selected{% endif %}>Competitors only</option>
+    </select>
+  </div>
+
+  <div class="col-md-2">
+    <label class="form-label">Agency only</label>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" value="1" id="agency_only" name="agency_only"
+             {% if filters.agency_only %}checked{% endif %}>
+      <label class="form-check-label" for="agency_only">
+        Show agencies only
+      </label>
+    </div>
+  </div>
+
+  <div class="col-md-2">
+    <label class="form-label">Pay band (hr)</label>
+    <div class="input-group">
+      <input type="number" step="0.01" name="min_rate" class="form-control" placeholder="Min"
+             value="{{ filters.min_rate if filters.min_rate is not none }}">
+      <input type="number" step="0.01" name="max_rate" class="form-control" placeholder="Max"
+             value="{{ filters.max_rate if filters.max_rate is not none }}">
+    </div>
+  </div>
+
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary me-2">Apply filters</button>
+    <a href="{{ url_for('dashboard.jobs') }}" class="btn btn-outline-secondary">Reset</a>
+  </div>
+</form>
+
+<div class="card">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Latest jobs (per advert)</h5>
+
+    {% if snaps %}
+      <div class="table-responsive">
+        <table class="table table-striped table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Company</th>
+              <th>Role</th>
+              <th>Postcode</th>
+              <th>Location</th>
+              <th class="text-end">Pay (hourly)</th>
+              <th>Type</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for snap in snaps %}
+            {% set job = snap.job_ad %}
+            <tr>
+              <td>
+                {% if job.company %}
+                  {{ job.company.canonical_name }}
+                  {% if job.company.is_agency %}
+                    <span class="badge bg-warning text-dark ms-1">Agency</span>
+                  {% endif %}
+                {% else %}
+                  <span class="text-muted">Unknown</span>
+                {% endif %}
+              </td>
+              <td>{{ job.title_raw }}</td>
+              <td>
+                {% if job.monitored_role and job.monitored_role.postcode %}
+                  {{ job.monitored_role.postcode.display_name or job.monitored_role.postcode.postcode }}
+                {% else %}
+                  <span class="text-muted">N/A</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if job.city %}
+                  {{ job.city }}
+                  {% if job.county %}
+                    ({{ job.county }})
+                  {% endif %}
+                {% elif job.location_raw %}
+                  {{ job.location_raw }}
+                {% else %}
+                  <span class="text-muted">N/A</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if snap.salary_min_hourly is not none or snap.salary_max_hourly is not none %}
+                  {% if snap.salary_min_hourly is not none and snap.salary_max_hourly is not none %}
+                    £{{ "%.2f"|format(snap.salary_min_hourly) }} – £{{ "%.2f"|format(snap.salary_max_hourly) }}
+                  {% elif snap.salary_min_hourly is not none %}
+                    from £{{ "%.2f"|format(snap.salary_min_hourly) }}
+                  {% elif snap.salary_max_hourly is not none %}
+                    up to £{{ "%.2f"|format(snap.salary_max_hourly) }}
+                  {% endif %}
+                {% else %}
+                  <span class="text-muted">N/A</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if job.is_blue_ribbon %}
+                  <span class="badge bg-primary">Blue Ribbon</span>
+                {% else %}
+                  <span class="badge bg-secondary">Competitor</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0 text-muted">No jobs match the current filters.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

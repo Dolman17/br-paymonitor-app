@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-3">Admin</h1>
+
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.postcodes') }}">Monitored postcodes</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('admin.roles') }}">Monitored roles</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('admin.recipients') }}">Email recipients</a>
+  </li>
+</ul>
+
+<div class="row">
+  <div class="col-md-5">
+    <h4>Add role</h4>
+    <form method="post" class="mb-4">
+      {{ form.hidden_tag() }}
+
+      <div class="mb-3">
+        {{ form.name.label(class="form-label") }}
+        {{ form.name(class="form-control", placeholder="e.g. Care Assistant") }}
+        {% for error in form.name.errors %}
+          <div class="text-danger small">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="mb-3">
+        {{ form.search_terms.label(class="form-label") }}
+        {{ form.search_terms(class="form-control", placeholder="Optional Adzuna search terms") }}
+      </div>
+
+      <div class="mb-3">
+        {{ form.postcode_id.label(class="form-label") }}
+        {{ form.postcode_id(class="form-select") }}
+        {% for error in form.postcode_id.errors %}
+          <div class="text-danger small">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      {{ form.submit(class="btn btn-primary") }}
+    </form>
+  </div>
+
+  <div class="col-md-7">
+    <h4>Current monitored roles</h4>
+
+    {% if roles %}
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Search terms</th>
+            <th>Postcode</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in roles %}
+          <tr>
+            <td>{{ r.name }}</td>
+            <td>{{ r.search_terms }}</td>
+            <td>
+              {% if r.postcode %}
+                {{ r.postcode.display_name or r.postcode.postcode }}
+              {% else %}
+                <span class="text-muted">None</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.is_active %}
+                <span class="badge bg-success">Active</span>
+              {% else %}
+                <span class="badge bg-secondary">Inactive</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <a href="{{ url_for('admin.edit_role', role_id=r.id) }}"
+                 class="btn btn-sm btn-outline-primary">
+                Edit
+              </a>
+              <form method="post"
+                    action="{{ url_for('admin.delete_role', role_id=r.id) }}"
+                    class="d-inline"
+                    onsubmit="return confirm('Delete this role? This may affect future scrapes.');">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                  Delete
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>No roles configured yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
