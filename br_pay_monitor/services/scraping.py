@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Tuple
+from datetime import datetime, timedelta
 
 from flask import current_app
 
@@ -15,6 +16,7 @@ from ..models import (
     JobAd,
     ScrapeRun,
     JobSnapshot,
+    ScrapeCheckpoint,
 )
 from .adzuna_client import AdzunaClient
 
@@ -51,7 +53,6 @@ def _extract_location(job: dict) -> tuple[str | None, str | None, str | None]:
     city = None
     county = None
     if len(area) >= 3:
-        # e.g. ["UK", "West Midlands", "Lichfield"]
         county = area[1]
         city = area[2]
     elif len(area) == 2:
@@ -62,22 +63,40 @@ def _extract_location(job: dict) -> tuple[str | None, str | None, str | None]:
 def _convert_to_hourly(
     salary_min: float | None,
     salary_max: float | None,
-    salary_is_annual: bool,
-) -> tuple[float | None, float | None, str | None]:
-    cfg = current_app.config
-    hours_per_week = float(cfg.get("HOURS_PER_WEEK", 37.5))
-    weeks_per_year = float(cfg.get("WEEKS_PER_YEAR", 52))
-
+    salary_is_annual: bool = False,
+) -> tuple[float | None, float | None, str]:
+    """
+    Very rough conversion helper. Keep your existing logic here if it differs.
+    """
     if salary_min is None and salary_max is None:
-        return None, None, None
+        return None, None, "unknown"
 
-    if not salary_is_annual:
-        return salary_min, salary_max, "hourly"
+    if salary_is_annual:
+        # assume 37.5h/week and 52 weeks
+        denom = 37.5 * 52
+        h_min = (float(salary_min) / denom) if salary_min is not None else None
+        h_max = (float(salary_max) / denom) if salary_max is not None else None
+        return h_min, h_max, "annual->hourly"
 
-    denom = hours_per_week * weeks_per_year
-    h_min = salary_min / denom if salary_min is not None else None
-    h_max = salary_max / denom if salary_max is not None else None
-    return h_min, h_max, "annual"
+    return (
+        float(salary_min) if salary_min is not None else None,
+        float(salary_max) if salary_max is not None else None,
+        "hourly",
+    )
+
+
+def _api_calls_used_today(brand_id: int) -> int:
+    start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    runs = (
+        ScrapeRun.query.filter(
+            ScrapeRun.brand_id == brand_id,
+            ScrapeRun.started_at >= start,
+            ScrapeRun.started_at < end,
+        )
+        .all()
+    )
+    return sum(int(r.api_calls or 0) for r in runs)
 
 
 def run_adzuna_scrape(
@@ -89,7 +108,16 @@ def run_adzuna_scrape(
     """
     Run a single Adzuna scrape for all active postcodes x roles for the given brand.
     Returns (ScrapeRun, jobs_fetched_count).
+
+    Trial-safe controls:
+    - Daily API budget (default 200)
+    - Skip recently-scraped postcode×role combos (default 12 hours)
     """
+    cfg = current_app.config
+
+    daily_budget = int(cfg.get("ADZUNA_DAILY_BUDGET", 200))
+    skip_recent_hours = float(cfg.get("ADZUNA_SKIP_RECENT_HOURS", 12))
+
     brand = Brand.query.filter_by(slug=brand_slug).first()
     if not brand:
         raise RuntimeError(f"Brand with slug '{brand_slug}' not found")
@@ -108,13 +136,26 @@ def run_adzuna_scrape(
     if not postcodes or not roles:
         raise RuntimeError("No monitored postcodes or roles configured yet")
 
+    # Budget check (hard stop if already too close)
+    used_today = _api_calls_used_today(brand.id)
+    remaining = max(0, daily_budget - used_today)
+
     scrape_run = ScrapeRun(brand=brand, trigger=trigger)
     db.session.add(scrape_run)
     db.session.flush()
 
+    if remaining <= 0:
+        scrape_run.success = False
+        scrape_run.error_message = f"Daily Adzuna budget reached ({daily_budget}/day). Used today: {used_today}."
+        scrape_run.finished_at = datetime.utcnow()
+        db.session.commit()
+        return scrape_run, 0
+
     client = AdzunaClient()
     total_jobs = 0
     api_calls = 0
+
+    cutoff = datetime.utcnow() - timedelta(hours=skip_recent_hours)
 
     for pc in postcodes:
         for role in roles:
@@ -122,11 +163,35 @@ def run_adzuna_scrape(
             if role.postcode_id and role.postcode_id != pc.id:
                 continue
 
+            # Skip if recently scraped
+            checkpoint = ScrapeCheckpoint.query.filter_by(
+                brand_id=brand.id,
+                postcode_id=pc.id,
+                role_id=role.id,
+            ).first()
+
+            if checkpoint and checkpoint.last_scraped_at and checkpoint.last_scraped_at >= cutoff:
+                continue
+
+            # Predictive budget guard: don't start a combo if it could exceed remaining
+            # (max_pages is the worst-case calls; actual may be lower due to early stop)
+            if api_calls + max_pages > remaining:
+                scrape_run.success = False
+                scrape_run.error_message = (
+                    f"Stopped early to respect daily budget. "
+                    f"Budget={daily_budget}, used_today={used_today}, run_calls={api_calls}."
+                )
+                scrape_run.jobs_fetched = total_jobs
+                scrape_run.api_calls = api_calls
+                scrape_run.finished_at = datetime.utcnow()
+                db.session.commit()
+                return scrape_run, total_jobs
+
             what = (role.search_terms or role.name).strip()
             where = pc.postcode
             distance = pc.radius_miles
 
-            results = client.search_jobs(
+            results, calls_made = client.search_jobs(
                 where=where,
                 distance=distance,
                 what=what,
@@ -134,9 +199,22 @@ def run_adzuna_scrape(
                 max_pages=max_pages,
             )
 
-            # Rough call count approximation
-            api_calls += max_pages
+            api_calls += int(calls_made or 0)
             total_jobs += len(results)
+
+            now = datetime.utcnow()
+
+            # Update checkpoint immediately so retries don't spam the same combo
+            if not checkpoint:
+                checkpoint = ScrapeCheckpoint(
+                    brand=brand,
+                    postcode=pc,
+                    role=role,
+                    last_scraped_at=now,
+                )
+                db.session.add(checkpoint)
+            else:
+                checkpoint.last_scraped_at = now
 
             for job in results:
                 adzuna_id = str(job.get("id") or job.get("adref") or "")
@@ -153,8 +231,12 @@ def run_adzuna_scrape(
                 salary_min = job.get("salary_min")
                 salary_max = job.get("salary_max")
                 salary_is_predicted = bool(job.get("salary_is_predicted"))
-                # If predicted only, we still use it for now
-                is_annual = job.get("contract_time") == "full_time" and job.get("salary_min") and job.get("salary_max") and job.get("salary_min") > 1000
+                is_annual = (
+                    job.get("contract_time") == "full_time"
+                    and salary_min
+                    and salary_max
+                    and float(salary_min) > 1000
+                )
 
                 h_min, h_max, salary_source = _convert_to_hourly(
                     salary_min,
@@ -186,9 +268,6 @@ def run_adzuna_scrape(
                 job_ad.monitored_role = role
                 job_ad.is_open = True
 
-                from datetime import datetime
-
-                now = datetime.utcnow()
                 if job_ad.first_seen_at is None:
                     job_ad.first_seen_at = now
                 job_ad.last_seen_at = now
@@ -204,15 +283,24 @@ def run_adzuna_scrape(
                 )
                 db.session.add(snapshot)
 
-    # TODO: mark jobs that were not seen in this run as closed (next iteration)
+            # Commit per combo to persist checkpoints + snapshots progressively
+            db.session.commit()
+
+            # Recompute remaining mid-run (so manual test runs don't blow budget)
+            used_today_now = _api_calls_used_today(brand.id)
+            remaining = max(0, daily_budget - used_today_now)
+            if remaining <= 0:
+                scrape_run.success = False
+                scrape_run.error_message = f"Daily Adzuna budget reached mid-run. Budget={daily_budget}/day."
+                scrape_run.jobs_fetched = total_jobs
+                scrape_run.api_calls = api_calls
+                scrape_run.finished_at = datetime.utcnow()
+                db.session.commit()
+                return scrape_run, total_jobs
 
     scrape_run.jobs_fetched = total_jobs
     scrape_run.api_calls = api_calls
     scrape_run.success = True
-
-    from datetime import datetime as _dt
-
-    scrape_run.finished_at = _dt.utcnow()
-
+    scrape_run.finished_at = datetime.utcnow()
     db.session.commit()
     return scrape_run, total_jobs

@@ -177,6 +177,31 @@ def register_cli_commands(app: Flask) -> None:
             f"{run_obj.api_calls} API calls (success={run_obj.success})."
         )
 
+    @scrape_group.command("adzuna-scheduled")
+    @click.option("--brand", "brand_slug", default="blue-ribbon", help="Brand slug")
+    @click.option("--max-pages", default=1, show_default=True, type=int)
+    @click.option("--results-per-page", default=50, show_default=True, type=int)
+    def scrape_adzuna_scheduled(brand_slug: str, max_pages: int, results_per_page: int):
+        """
+        Run Adzuna scrape with trigger='scheduled' (intended for Railway cron).
+
+        Example:
+            flask scrape adzuna-scheduled --brand=blue-ribbon --max-pages=1
+        """
+        from .services.scraping import run_adzuna_scrape
+
+        click.echo(f"Running *scheduled* Adzuna scrape for brand '{brand_slug}'...")
+        run_obj, total = run_adzuna_scrape(
+            brand_slug=brand_slug,
+            trigger="scheduled",
+            max_pages=max_pages,
+            results_per_page=results_per_page,
+        )
+        click.echo(
+            f"Scheduled scrape {run_obj.id} complete: {total} jobs fetched, "
+            f"{run_obj.api_calls} API calls (success={run_obj.success})."
+        )
+
     # -------- Report commands group -------- #
 
     @app.cli.group("report")
@@ -254,7 +279,9 @@ def register_cli_commands(app: Flask) -> None:
             f"Building daily report for {brand.slug} on {target_date.isoformat()} "
             f"to {len(to_emails)} recipients..."
         )
-        subject, html = build_daily_report(brand_slug=brand_slug, target_date=target_date)
+        subject, html = build_daily_report(
+            brand_slug=brand_slug, target_date=target_date
+        )
         success, log = send_html_email(subject, to_emails, html, brand=brand)
 
         if success:

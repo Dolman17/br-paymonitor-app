@@ -256,3 +256,23 @@ class EmailLog(db.Model):
 
     success = db.Column(db.Boolean, default=False, nullable=False)
     error_message = db.Column(db.Text, nullable=True)
+
+class ScrapeCheckpoint(db.Model):
+    __tablename__ = "scrape_checkpoints"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    brand_id = db.Column(db.Integer, db.ForeignKey("brands.id"), nullable=False)
+    brand = db.relationship("Brand", backref=db.backref("scrape_checkpoints", lazy="dynamic"))
+
+    postcode_id = db.Column(db.Integer, db.ForeignKey("monitored_postcodes.id"), nullable=False)
+    postcode = db.relationship("MonitoredPostcode", backref=db.backref("scrape_checkpoints", lazy="dynamic"))
+
+    role_id = db.Column(db.Integer, db.ForeignKey("monitored_roles.id"), nullable=False)
+    role = db.relationship("MonitoredRole", backref=db.backref("scrape_checkpoints", lazy="dynamic"))
+
+    last_scraped_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("brand_id", "postcode_id", "role_id", name="uq_scrape_checkpoint_combo"),
+    )
