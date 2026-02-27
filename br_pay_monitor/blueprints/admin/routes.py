@@ -1,12 +1,21 @@
 # br_pay_monitor/blueprints/admin/routes.py
 
-from flask import render_template, redirect, url_for, flash, abort, request
+from datetime import datetime, timedelta
+
+from flask import render_template, redirect, url_for, flash, abort, request, current_app
 from flask_login import login_required, current_user
+from sqlalchemy import func
 
 from . import bp
 from .forms import PostcodeForm, EmailRecipientForm, MonitoredRoleForm
 from ...extensions import db
-from ...models import MonitoredPostcode, Brand, EmailRecipient, MonitoredRole
+from ...models import (
+    MonitoredPostcode,
+    Brand,
+    EmailRecipient,
+    MonitoredRole,
+    ScrapeRun,
+)
 
 
 def _require_admin():
@@ -18,6 +27,92 @@ def _require_admin():
 
 def _current_brand() -> Brand:
     return current_user.brand or Brand.get_default_brand()
+
+
+# -------- Adzuna usage -------- #
+
+
+@bp.route("/adzuna-usage", methods=["GET"])
+@login_required
+def adzuna_usage():
+    _require_admin()
+    brand = _current_brand()
+
+    daily_budget = int(current_app.config.get("ADZUNA_DAILY_BUDGET", 200))
+
+    # Today (UTC)
+    start_today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    end_today = start_today + timedelta(days=1)
+
+    today_used = (
+        db.session.query(func.coalesce(func.sum(ScrapeRun.api_calls), 0))
+        .filter(
+            ScrapeRun.brand_id == brand.id,
+            ScrapeRun.started_at >= start_today,
+            ScrapeRun.started_at < end_today,
+        )
+        .scalar()
+        or 0
+    )
+    today_used = int(today_used)
+    today_remaining = max(0, daily_budget - today_used)
+
+    # Last 7 days (UTC day buckets)
+    start_7 = (start_today - timedelta(days=6)).date()
+    end_7 = (start_today + timedelta(days=1)).date()
+
+    rows = (
+        db.session.query(
+            func.date(ScrapeRun.started_at).label("day"),
+            func.coalesce(func.sum(ScrapeRun.api_calls), 0).label("calls"),
+            func.count(ScrapeRun.id).label("runs"),
+            func.coalesce(func.sum(func.case((ScrapeRun.success.is_(True), 1), else_=0)), 0).label("success_runs"),
+        )
+        .filter(
+            ScrapeRun.brand_id == brand.id,
+            func.date(ScrapeRun.started_at) >= start_7,
+            func.date(ScrapeRun.started_at) < end_7,
+        )
+        .group_by(func.date(ScrapeRun.started_at))
+        .order_by(func.date(ScrapeRun.started_at).asc())
+        .all()
+    )
+
+    # Fill missing days with zeros so the table is stable
+    by_day = {str(r.day): r for r in rows}
+    last_7 = []
+    for i in range(6, -1, -1):
+        d = (start_today.date() - timedelta(days=i))
+        key = str(d)
+        r = by_day.get(key)
+        calls = int(r.calls) if r else 0
+        runs = int(r.runs) if r else 0
+        success_runs = int(r.success_runs) if r else 0
+        last_7.append(
+            {
+                "day": d,
+                "calls": calls,
+                "runs": runs,
+                "success_runs": success_runs,
+                "budget": daily_budget,
+                "remaining": max(0, daily_budget - calls),
+                "pct": (calls / daily_budget * 100.0) if daily_budget else 0.0,
+            }
+        )
+
+    week_total = sum(x["calls"] for x in last_7)
+    week_runs = sum(x["runs"] for x in last_7)
+
+    return render_template(
+        "admin/adzuna_usage.html",
+        brand=brand,
+        daily_budget=daily_budget,
+        today_used=today_used,
+        today_remaining=today_remaining,
+        last_7=last_7,
+        week_total=week_total,
+        week_runs=week_runs,
+    )
 
 
 # -------- Postcodes management -------- #
@@ -117,9 +212,7 @@ def recipients():
             flash(f"Recipient {email} added.", "success")
             return redirect(url_for("admin.recipients"))
 
-    recipients = (
-        EmailRecipient.query.order_by(EmailRecipient.email.asc()).all()
-    )
+    recipients = EmailRecipient.query.order_by(EmailRecipient.email.asc()).all()
 
     return render_template(
         "admin/recipients.html",
@@ -176,7 +269,6 @@ def edit_recipient(recipient_id: int):
 @login_required
 def delete_recipient(recipient_id: int):
     _require_admin()
-    brand = _current_brand()
 
     recipient = EmailRecipient.query.filter_by(id=recipient_id).first_or_404()
 
@@ -210,9 +302,7 @@ def roles():
         search_terms = (form.search_terms.data or "").strip()
         postcode_id = form.postcode_id.data
 
-        pc = MonitoredPostcode.query.filter_by(
-            id=postcode_id, brand_id=brand.id
-        ).first()
+        pc = MonitoredPostcode.query.filter_by(id=postcode_id, brand_id=brand.id).first()
         if not pc:
             flash("Invalid postcode selection.", "danger")
         else:
@@ -249,9 +339,7 @@ def edit_role(role_id: int):
     _require_admin()
     brand = _current_brand()
 
-    role = MonitoredRole.query.filter_by(
-        id=role_id, brand_id=brand.id
-    ).first_or_404()
+    role = MonitoredRole.query.filter_by(id=role_id, brand_id=brand.id).first_or_404()
 
     postcodes = (
         MonitoredPostcode.query.filter_by(brand_id=brand.id, is_active=True)
@@ -269,9 +357,7 @@ def edit_role(role_id: int):
         search_terms = (form.search_terms.data or "").strip()
         postcode_id = form.postcode_id.data
 
-        pc = MonitoredPostcode.query.filter_by(
-            id=postcode_id, brand_id=brand.id
-        ).first()
+        pc = MonitoredPostcode.query.filter_by(id=postcode_id, brand_id=brand.id).first()
         if not pc:
             flash("Invalid postcode selection.", "danger")
         else:
@@ -296,9 +382,7 @@ def delete_role(role_id: int):
     _require_admin()
     brand = _current_brand()
 
-    role = MonitoredRole.query.filter_by(
-        id=role_id, brand_id=brand.id
-    ).first_or_404()
+    role = MonitoredRole.query.filter_by(id=role_id, brand_id=brand.id).first_or_404()
 
     name = role.name
     db.session.delete(role)

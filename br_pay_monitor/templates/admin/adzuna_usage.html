@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h2 class="mb-0">Adzuna Usage</h2>
+    <div class="text-muted">Brand: <strong>{{ brand.slug }}</strong> (UTC day buckets)</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.postcodes') }}">Postcodes</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.roles') }}">Roles</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.recipients') }}">Recipients</a>
+    <a class="btn btn-primary" href="{{ url_for('admin.adzuna_usage') }}">Adzuna Usage</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="text-muted">Daily budget</div>
+        <div class="fs-3 fw-semibold">{{ daily_budget }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="text-muted">Used today</div>
+        <div class="fs-3 fw-semibold">{{ today_used }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="text-muted">Remaining today</div>
+        <div class="fs-3 fw-semibold">{{ today_remaining }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="d-flex align-items-center justify-content-between">
+      <h5 class="mb-0">Last 7 days</h5>
+      <div class="text-muted">
+        Week total: <strong>{{ week_total }}</strong> calls across <strong>{{ week_runs }}</strong> runs
+      </div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-striped mb-0">
+      <thead>
+        <tr>
+          <th>Date (UTC)</th>
+          <th class="text-end">Runs</th>
+          <th class="text-end">Successful runs</th>
+          <th class="text-end">API calls</th>
+          <th class="text-end">Budget</th>
+          <th class="text-end">Remaining</th>
+          <th style="width: 220px;">Usage</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in last_7 %}
+          <tr>
+            <td>{{ d.day.isoformat() }}</td>
+            <td class="text-end">{{ d.runs }}</td>
+            <td class="text-end">{{ d.success_runs }}</td>
+            <td class="text-end">{{ d.calls }}</td>
+            <td class="text-end">{{ d.budget }}</td>
+            <td class="text-end">{{ d.remaining }}</td>
+            <td>
+              <div class="progress" role="progressbar" aria-label="Usage">
+                <div class="progress-bar {% if d.pct >= 90 %}bg-danger{% elif d.pct >= 70 %}bg-warning text-dark{% else %}bg-success{% endif %}"
+                     style="width: {{ '%.1f'|format(d.pct if d.pct <= 100 else 100) }}%;">
+                  {{ '%.0f'|format(d.pct) }}%
+                </div>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="alert alert-info">
+  Tip: Keep scrapes conservative on Adzuna trial. This page shows your actual <code>api_calls</code> logged per scrape run.
+</div>
+{% endblock %}
