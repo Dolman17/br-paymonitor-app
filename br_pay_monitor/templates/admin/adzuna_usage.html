@@ -1,3 +1,5 @@
+<!-- br_pay_monitor/templates/admin/adzuna_usage.html -->
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -15,7 +17,7 @@
 </div>
 
 <div class="row g-3 mb-4">
-  <div class="col-md-4">
+  <div class="col-md-3">
     <div class="card">
       <div class="card-body">
         <div class="text-muted">Daily budget</div>
@@ -23,7 +25,7 @@
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-3">
     <div class="card">
       <div class="card-body">
         <div class="text-muted">Used today</div>
@@ -31,11 +33,20 @@
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-3">
     <div class="card">
       <div class="card-body">
         <div class="text-muted">Remaining today</div>
         <div class="fs-3 fw-semibold">{{ today_remaining }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card">
+      <div class="card-body">
+        <div class="text-muted">Week success rate</div>
+        <div class="fs-3 fw-semibold">{{ '%.0f'|format(week_success_rate_pct) }}%</div>
+        <div class="text-muted small">{{ week_success_runs }}/{{ week_runs }} successful runs</div>
       </div>
     </div>
   </div>
@@ -56,7 +67,8 @@
         <tr>
           <th>Date (UTC)</th>
           <th class="text-end">Runs</th>
-          <th class="text-end">Successful runs</th>
+          <th class="text-end">Successful</th>
+          <th class="text-end">Success rate</th>
           <th class="text-end">API calls</th>
           <th class="text-end">Budget</th>
           <th class="text-end">Remaining</th>
@@ -69,6 +81,7 @@
             <td>{{ d.day.isoformat() }}</td>
             <td class="text-end">{{ d.runs }}</td>
             <td class="text-end">{{ d.success_runs }}</td>
+            <td class="text-end">{{ '%.0f'|format(d.success_rate_pct) }}%</td>
             <td class="text-end">{{ d.calls }}</td>
             <td class="text-end">{{ d.budget }}</td>
             <td class="text-end">{{ d.remaining }}</td>
@@ -88,6 +101,6 @@
 </div>
 
 <div class="alert alert-info">
-  Tip: Keep scrapes conservative on Adzuna trial. This page shows your actual <code>api_calls</code> logged per scrape run.
+  Tip: This page uses your logged <code>ScrapeRun.api_calls</code> and <code>ScrapeRun.success</code> values.
 </div>
 {% endblock %}

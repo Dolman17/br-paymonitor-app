@@ -2,9 +2,17 @@
 
 from datetime import datetime, timedelta
 
-from flask import render_template, redirect, url_for, flash, abort, request, current_app
+from flask import (
+    render_template,
+    redirect,
+    url_for,
+    flash,
+    abort,
+    request,
+    current_app,
+)
 from flask_login import login_required, current_user
-from sqlalchemy import func
+from sqlalchemy import func, case
 
 from . import bp
 from .forms import PostcodeForm, EmailRecipientForm, MonitoredRoleForm
@@ -66,7 +74,10 @@ def adzuna_usage():
             func.date(ScrapeRun.started_at).label("day"),
             func.coalesce(func.sum(ScrapeRun.api_calls), 0).label("calls"),
             func.count(ScrapeRun.id).label("runs"),
-            func.coalesce(func.sum(func.case((ScrapeRun.success.is_(True), 1), else_=0)), 0).label("success_runs"),
+            func.coalesce(
+                func.sum(case((ScrapeRun.success.is_(True), 1), else_=0)),
+                0,
+            ).label("success_runs"),
         )
         .filter(
             ScrapeRun.brand_id == brand.id,
@@ -85,23 +96,31 @@ def adzuna_usage():
         d = (start_today.date() - timedelta(days=i))
         key = str(d)
         r = by_day.get(key)
+
         calls = int(r.calls) if r else 0
         runs = int(r.runs) if r else 0
         success_runs = int(r.success_runs) if r else 0
+
+        usage_pct = (calls / daily_budget * 100.0) if daily_budget else 0.0
+        success_rate_pct = (success_runs / runs * 100.0) if runs else 0.0
+
         last_7.append(
             {
                 "day": d,
                 "calls": calls,
                 "runs": runs,
                 "success_runs": success_runs,
+                "success_rate_pct": success_rate_pct,
                 "budget": daily_budget,
                 "remaining": max(0, daily_budget - calls),
-                "pct": (calls / daily_budget * 100.0) if daily_budget else 0.0,
+                "pct": usage_pct,
             }
         )
 
     week_total = sum(x["calls"] for x in last_7)
     week_runs = sum(x["runs"] for x in last_7)
+    week_success_runs = sum(x["success_runs"] for x in last_7)
+    week_success_rate_pct = (week_success_runs / week_runs * 100.0) if week_runs else 0.0
 
     return render_template(
         "admin/adzuna_usage.html",
@@ -112,6 +131,8 @@ def adzuna_usage():
         last_7=last_7,
         week_total=week_total,
         week_runs=week_runs,
+        week_success_runs=week_success_runs,
+        week_success_rate_pct=week_success_rate_pct,
     )
 
 
