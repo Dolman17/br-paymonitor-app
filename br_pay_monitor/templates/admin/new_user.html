@@ -1,0 +1,85 @@
+<!-- br_pay_monitor/templates/admin/new_user.html -->
+
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="mb-1">Admin · New User</h1>
+    <div class="text-muted">Create a new login. Non-admin users are view-only.</div>
+  </div>
+  <div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.users') }}">Back</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <form method="post">
+      {{ form.hidden_tag() }}
+
+      <div class="row">
+        <div class="col-md-7">
+          <div class="mb-3">
+            {{ form.email.label(class="form-label") }}
+            {{ form.email(class="form-control", placeholder="name@company.com") }}
+            {% for error in form.email.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+
+          <div class="mb-3">
+            {{ form.password.label(class="form-label") }}
+            {{ form.password(class="form-control") }}
+            {% for error in form.password.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+
+          <div class="mb-3">
+            {{ form.confirm_password.label(class="form-label") }}
+            {{ form.confirm_password(class="form-control") }}
+            {% for error in form.confirm_password.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+
+          <div class="mb-3">
+            {{ form.brand_id.label(class="form-label") }}
+            {{ form.brand_id(class="form-select") }}
+            {% if form.brand_id.description %}
+              <div class="form-text">{{ form.brand_id.description }}</div>
+            {% endif %}
+            {% for error in form.brand_id.errors %}
+              <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="col-md-5">
+          <div class="border rounded p-3 bg-light">
+            <div class="form-check mb-2">
+              {{ form.is_active(class="form-check-input") }}
+              {{ form.is_active.label(class="form-check-label") }}
+            </div>
+            <div class="form-check mb-2">
+              {{ form.is_admin(class="form-check-input") }}
+              {{ form.is_admin.label(class="form-check-label") }}
+            </div>
+
+            <div class="text-muted small mt-2">
+              <div><strong>Viewer</strong> users can only view Dashboard/Jobs.</div>
+              <div><strong>Admin</strong> users can access /admin tools.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 mt-3">
+        {{ form.submit(class="btn btn-primary") }}
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin.users') }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

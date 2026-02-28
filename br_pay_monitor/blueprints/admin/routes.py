@@ -15,7 +15,13 @@ from flask_login import login_required, current_user
 from sqlalchemy import func, case
 
 from . import bp
-from .forms import PostcodeForm, EmailRecipientForm, MonitoredRoleForm
+from .forms import (
+    PostcodeForm,
+    EmailRecipientForm,
+    MonitoredRoleForm,
+    CreateUserForm,
+    EditUserForm,
+)
 from ...extensions import db
 from ...models import (
     MonitoredPostcode,
@@ -23,6 +29,7 @@ from ...models import (
     EmailRecipient,
     MonitoredRole,
     ScrapeRun,
+    User,
 )
 
 
@@ -35,6 +42,12 @@ def _require_admin():
 
 def _current_brand() -> Brand:
     return current_user.brand or Brand.get_default_brand()
+
+
+def _brand_choices():
+    brands = Brand.query.order_by(Brand.slug.asc()).all()
+    # 0 means "no brand assigned" (falls back to default brand in dashboard)
+    return [(0, "— No brand (default) —")] + [(b.id, f"{b.name} ({b.slug})") for b in brands]
 
 
 # -------- Adzuna usage -------- #
@@ -120,7 +133,9 @@ def adzuna_usage():
     week_total = sum(x["calls"] for x in last_7)
     week_runs = sum(x["runs"] for x in last_7)
     week_success_runs = sum(x["success_runs"] for x in last_7)
-    week_success_rate_pct = (week_success_runs / week_runs * 100.0) if week_runs else 0.0
+    week_success_rate_pct = (
+        (week_success_runs / week_runs * 100.0) if week_runs else 0.0
+    )
 
     return render_template(
         "admin/adzuna_usage.html",
@@ -134,6 +149,159 @@ def adzuna_usage():
         week_success_runs=week_success_runs,
         week_success_rate_pct=week_success_rate_pct,
     )
+
+
+# -------- Users management -------- #
+
+
+@bp.route("/users", methods=["GET"])
+@login_required
+def users():
+    _require_admin()
+    brand = _current_brand()
+
+    # Show all users, grouped/sortable by brand.
+    all_users = (
+        User.query.outerjoin(Brand, User.brand_id == Brand.id)
+        .order_by(
+            User.is_admin.desc(),
+            User.is_active.desc(),
+            Brand.slug.asc().nullslast(),
+            User.email.asc(),
+        )
+        .all()
+    )
+
+    return render_template(
+        "admin/users.html",
+        brand=brand,
+        users=all_users,
+    )
+
+
+@bp.route("/users/new", methods=["GET", "POST"])
+@login_required
+def create_user():
+    _require_admin()
+    brand = _current_brand()
+
+    form = CreateUserForm()
+    form.brand_id.choices = _brand_choices()
+
+    if form.validate_on_submit():
+        email = form.email.data.lower().strip()
+        existing = User.query.filter_by(email=email).first()
+        if existing:
+            flash("That email address is already in use.", "warning")
+            return redirect(url_for("admin.create_user"))
+
+        user = User(
+            email=email,
+            is_admin=bool(form.is_admin.data),
+            is_active=bool(form.is_active.data),
+        )
+
+        selected_brand_id = int(form.brand_id.data or 0)
+        if selected_brand_id and selected_brand_id != 0:
+            b = Brand.query.get(selected_brand_id)
+            if b:
+                user.brand = b
+        else:
+            user.brand = None
+
+        user.set_password(form.password.data)
+
+        db.session.add(user)
+        db.session.commit()
+
+        flash(f"User {email} created.", "success")
+        return redirect(url_for("admin.users"))
+
+    return render_template(
+        "admin/new_user.html",
+        form=form,
+        brand=brand,
+    )
+
+
+@bp.route("/users/<int:user_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_user(user_id: int):
+    _require_admin()
+    brand = _current_brand()
+
+    user = User.query.filter_by(id=user_id).first_or_404()
+
+    form = EditUserForm(obj=user)
+    form.brand_id.choices = _brand_choices()
+
+    # Populate brand select on GET
+    if request.method == "GET":
+        form.brand_id.data = user.brand_id or 0
+
+    if form.validate_on_submit():
+        new_email = form.email.data.lower().strip()
+
+        existing = User.query.filter(
+            User.email == new_email,
+            User.id != user.id,
+        ).first()
+        if existing:
+            flash("Another user already uses that email address.", "warning")
+            return redirect(url_for("admin.edit_user", user_id=user.id))
+
+        # Prevent an admin from locking themselves out.
+        if user.id == current_user.id:
+            if not bool(form.is_admin.data):
+                flash("You cannot remove your own admin access.", "danger")
+                return redirect(url_for("admin.edit_user", user_id=user.id))
+            if not bool(form.is_active.data):
+                flash("You cannot deactivate your own account.", "danger")
+                return redirect(url_for("admin.edit_user", user_id=user.id))
+
+        user.email = new_email
+        user.is_admin = bool(form.is_admin.data)
+        user.is_active = bool(form.is_active.data)
+
+        selected_brand_id = int(form.brand_id.data or 0)
+        if selected_brand_id and selected_brand_id != 0:
+            b = Brand.query.get(selected_brand_id)
+            user.brand = b if b else None
+        else:
+            user.brand = None
+
+        # Optional password reset
+        if form.password.data:
+            user.set_password(form.password.data)
+
+        db.session.commit()
+        flash("User updated.", "success")
+        return redirect(url_for("admin.users"))
+
+    return render_template(
+        "admin/edit_user.html",
+        form=form,
+        user=user,
+        brand=brand,
+    )
+
+
+@bp.route("/users/<int:user_id>/delete", methods=["POST"])
+@login_required
+def delete_user(user_id: int):
+    _require_admin()
+
+    user = User.query.filter_by(id=user_id).first_or_404()
+
+    if user.id == current_user.id:
+        flash("You cannot delete your own account.", "danger")
+        return redirect(url_for("admin.users"))
+
+    email = user.email
+    db.session.delete(user)
+    db.session.commit()
+    flash(f"User {email} deleted.", "info")
+    return redirect(url_for("admin.users"))
 
 
 # -------- Postcodes management -------- #

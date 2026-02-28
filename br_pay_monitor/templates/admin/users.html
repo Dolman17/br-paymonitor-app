@@ -1,0 +1,87 @@
+<!-- br_pay_monitor/templates/admin/users.html -->
+
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="mb-1">Admin · Users</h1>
+    <div class="text-muted">Create and manage login access. Non-admin users are view-only.</div>
+  </div>
+  <div>
+    <a class="btn btn-primary" href="{{ url_for('admin.create_user') }}">+ New user</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    {% if users %}
+      <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Brand</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td>
+                {{ u.email }}
+                {% if u.id == current_user.id %}
+                  <span class="badge bg-info text-dark ms-2">You</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if u.brand %}
+                  {{ u.brand.slug }}
+                {% else %}
+                  <span class="text-muted">(default)</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if u.is_admin %}
+                  <span class="badge bg-warning text-dark">Admin</span>
+                {% else %}
+                  <span class="badge bg-secondary">Viewer</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if u.is_active %}
+                  <span class="badge bg-success">Active</span>
+                {% else %}
+                  <span class="badge bg-danger">Disabled</span>
+                {% endif %}
+              </td>
+              <td>
+                {{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '' }}
+              </td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.edit_user', user_id=u.id) }}">Edit</a>
+
+                <form method="post" action="{{ url_for('admin.delete_user', user_id=u.id) }}" class="d-inline" onsubmit="return confirm('Delete user {{ u.email }}?');">
+                  <button type="submit" class="btn btn-sm btn-outline-danger" {% if u.id == current_user.id %}disabled{% endif %}>
+                    Delete
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="mb-0">No users found.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="mt-3 text-muted small">
+  Tip: Disable a user instead of deleting if you want to keep audit history (edit user → uncheck Active).
+</div>
+{% endblock %}
