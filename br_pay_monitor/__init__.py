@@ -66,6 +66,7 @@ def register_cli_commands(app: Flask) -> None:
         MonitoredPostcode,
         MonitoredRole,
         EmailRecipient,
+        EmailLog,
         db as _db,
     )
 
@@ -279,6 +280,112 @@ def register_cli_commands(app: Flask) -> None:
             f"Building daily report for {brand.slug} on {target_date.isoformat()} "
             f"to {len(to_emails)} recipients..."
         )
+        subject, html = build_daily_report(
+            brand_slug=brand_slug, target_date=target_date
+        )
+        success, log = send_html_email(subject, to_emails, html, brand=brand)
+
+        if success:
+            click.echo(
+                f"Daily report sent successfully. Log id={log.id if log else 'N/A'}."
+            )
+        else:
+            click.echo("Failed to send daily report. See logs for details.")
+
+    @report_group.command("send-daily-scheduled")
+    @click.option("--brand", "brand_slug", default="blue-ribbon", help="Brand slug")
+    def send_daily_report_scheduled(brand_slug: str):
+        """
+        DST-safe scheduled daily report sender.
+
+        Intended usage:
+        - Schedule this command at 08:00 UTC and 09:00 UTC daily.
+        - It will only send when the local time in APP_TIMEZONE is exactly 09:00.
+        - It is idempotent: won't send twice for the same brand/date.
+
+        Example:
+            flask report send-daily-scheduled --brand=blue-ribbon
+        """
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo
+
+        from .services.reporting import build_daily_report
+        from .services.emailer import send_html_email
+
+        brand = Brand.query.filter_by(slug=brand_slug).first()
+        if not brand:
+            click.echo(f"Brand with slug '{brand_slug}' not found.")
+            return
+
+        tz_name = app.config.get("APP_TIMEZONE", "Europe/London")
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            click.echo(f"Invalid APP_TIMEZONE '{tz_name}'. Falling back to Europe/London.")
+            tz = ZoneInfo("Europe/London")
+
+        now_local = _dt.now(tz)
+        if now_local.hour != 9:
+            click.echo(
+                f"Not sending: local time is {now_local.strftime('%Y-%m-%d %H:%M %Z')}, "
+                "only sends at 09:00 local."
+            )
+            return
+
+        target_date = now_local.date()
+        subject_expected = (
+            f"{brand.name} – BR Pay Monitor Daily Rate Report – "
+            f"{target_date.strftime('%Y-%m-%d')}"
+        )
+
+        already_sent = (
+            EmailLog.query.filter_by(
+                brand_id=brand.id,
+                subject=subject_expected,
+                success=True,
+            )
+            .first()
+            is not None
+        )
+        if already_sent:
+            click.echo(f"Already sent daily report for {brand.slug} on {target_date}. Skipping.")
+            return
+
+        # Brand-specific recipient selection using per-brand flags
+        if brand.slug == "blue-ribbon":
+            recipients = (
+                EmailRecipient.query.filter_by(
+                    is_active=True,
+                    include_blue_ribbon=True,
+                )
+                .order_by(EmailRecipient.email.asc())
+                .all()
+            )
+        elif brand.slug == "forevermore-care":
+            recipients = (
+                EmailRecipient.query.filter_by(
+                    is_active=True,
+                    include_forevermore=True,
+                )
+                .order_by(EmailRecipient.email.asc())
+                .all()
+            )
+        else:
+            recipients = []
+
+        if not recipients:
+            click.echo(
+                f"No active email recipients configured for brand '{brand_slug}'. "
+                "Skipping send."
+            )
+            return
+
+        to_emails = [r.email for r in recipients]
+        click.echo(
+            f"Sending scheduled daily report for {brand.slug} on {target_date.isoformat()} "
+            f"({now_local.strftime('%H:%M %Z')}) to {len(to_emails)} recipients..."
+        )
+
         subject, html = build_daily_report(
             brand_slug=brand_slug, target_date=target_date
         )
